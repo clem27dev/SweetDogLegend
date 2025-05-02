@@ -1,0 +1,448 @@
+:root {
+  /* Base colors */
+  --primary: 305 100% 87%;
+  --primary-foreground: 300 10% 20%;
+  
+  --secondary: 280 75% 92%;
+  --secondary-foreground: 280 20% 25%;
+  
+  --accent: 320 100% 90%;
+  --accent-foreground: 320 20% 30%;
+  
+  --background: 303 100% 98%;
+  --foreground: 300 10% 20%;
+  
+  --card: 0 0% 100%;
+  --card-foreground: 300 10% 20%;
+  
+  --popover: 0 0% 100%;
+  --popover-foreground: 300 10% 20%;
+  
+  --muted: 300 20% 96%;
+  --muted-foreground: 300 10% 60%;
+  
+  --destructive: 0 100% 70%;
+  --destructive-foreground: 0 0% 100%;
+  
+  --border: 300 20% 90%;
+  --input: 300 20% 90%;
+  --ring: 305 100% 87%;
+  
+  /* Sidebar colors */
+  --sidebar-background: 280 75% 92%;
+  --sidebar-foreground: 300 10% 20%;
+  --sidebar-primary: 320 100% 90%;
+  --sidebar-primary-foreground: 320 20% 30%;
+  --sidebar-accent: 305 100% 87%;
+  --sidebar-accent-foreground: 300 10% 20%;
+  --sidebar-border: 300 20% 90%;
+  --sidebar-ring: 305 100% 87%;
+  
+  /* Chart colors */
+  --chart-1: 305 100% 87%;
+  --chart-2: 320 100% 85%; 
+  --chart-3: 280 75% 80%;
+  --chart-4: 260 70% 85%;
+  --chart-5: 240 65% 90%;
+  
+  /* Radius */
+  --radius: 0.75rem;
+  
+  /* Animation */
+  --bounce-duration: 0.5s;
+  --bounce-height: 6px;
+}
+
+/* Global styles */
+body {
+  font-family: 'Nunito', sans-serif;
+  background-color: hsl(var(--background));
+  color: hsl(var(--foreground));
+}
+
+/* Game container */
+.game-container {
+  width: 100vw;
+  height: 100vh;
+  position: relative;
+  overflow: hidden;
+  background: linear-gradient(135deg, hsl(var(--background)), hsl(var(--secondary)));
+}
+
+/* Loading screen */
+.loading-screen {
+  width: 100vw;
+  height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: linear-gradient(135deg, hsl(var(--background)), hsl(var(--secondary)));
+}
+
+.loading-content {
+  text-align: center;
+  padding: 2rem;
+  border-radius: var(--radius);
+  background-color: rgba(255, 255, 255, 0.8);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+}
+
+.loading-paw-prints {
+  display: flex;
+  justify-content: center;
+  gap: 1rem;
+  margin-top: 1rem;
+}
+
+.loading-paw-prints i {
+  font-size: 2rem;
+  color: hsl(var(--primary));
+}
+
+/* Auth form */
+.auth-container {
+  width: 100vw;
+  height: 100vh;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  background: url('/textures/sky.png') no-repeat center center;
+  background-size: cover;
+  padding: 1rem;
+}
+
+.auth-form {
+  width: 100%;
+  max-width: 420px;
+  padding: 2rem;
+  border-radius: var(--radius);
+  background-color: rgba(255, 255, 255, 0.9);
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.2);
+}
+
+.game-title {
+  font-size: 2.5rem;
+  font-weight: 700;
+  text-align: center;
+  margin-bottom: 2rem;
+  color: hsl(var(--primary));
+  text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.1);
+}
+
+/* Resource panel */
+.resource-panel {
+  position: absolute;
+  top: 1rem;
+  right: 1rem;
+  padding: 0.75rem;
+  border-radius: var(--radius);
+  background-color: rgba(255, 255, 255, 0.9);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+  display: flex;
+  gap: 1.25rem;
+  z-index: 10;
+}
+
+.resource {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.resource-icon {
+  font-size: 1.25rem;
+}
+
+.resource-value {
+  font-weight: 600;
+}
+
+/* Game menu */
+.game-menu {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: 90%;
+  max-width: 600px;
+  padding: 2rem;
+  border-radius: var(--radius);
+  background-color: rgba(255, 255, 255, 0.9);
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.2);
+  z-index: 20;
+}
+
+.menu-options {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 1rem;
+  margin-top: 1.5rem;
+}
+
+.menu-option {
+  padding: 1.25rem;
+  border-radius: var(--radius);
+  background-color: hsl(var(--primary));
+  color: hsl(var(--primary-foreground));
+  font-weight: 600;
+  text-align: center;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.menu-option:hover {
+  transform: translateY(-3px);
+  box-shadow: 0 6px 12px rgba(0, 0, 0, 0.1);
+  background-color: hsl(var(--accent));
+}
+
+.menu-option i {
+  font-size: 1.75rem;
+}
+
+/* Dog panel */
+.dog-panel {
+  position: absolute;
+  bottom: 1rem;
+  left: 1rem;
+  right: 1rem;
+  padding: 1rem;
+  border-radius: var(--radius);
+  background-color: rgba(255, 255, 255, 0.9);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+  display: flex;
+  flex-direction: column;
+  max-height: 30vh;
+  overflow-y: auto;
+  z-index: 10;
+}
+
+.dog-list {
+  display: flex;
+  gap: 1rem;
+  overflow-x: auto;
+  padding: 0.5rem 0;
+}
+
+.dog-card {
+  min-width: 200px;
+  padding: 1rem;
+  border-radius: var(--radius);
+  background-color: hsl(var(--card));
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+  transition: transform 0.2s ease;
+}
+
+.dog-card:hover {
+  transform: translateY(-3px);
+}
+
+.dog-name {
+  font-weight: 700;
+  margin-bottom: 0.5rem;
+}
+
+.dog-stats {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 0.5rem;
+  font-size: 0.875rem;
+}
+
+.dog-actions {
+  display: flex;
+  gap: 0.5rem;
+  margin-top: 1rem;
+}
+
+/* Combat arena */
+.combat-arena {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background: linear-gradient(to bottom, #f8ceff, #e4b7ff);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: space-between;
+  padding: 2rem 1rem;
+  z-index: 30;
+}
+
+.combat-top {
+  width: 100%;
+  display: flex;
+  justify-content: space-between;
+}
+
+.combat-enemies {
+  display: flex;
+  gap: 1.5rem;
+  justify-content: center;
+  margin-bottom: 2rem;
+}
+
+.combat-player-dogs {
+  display: flex;
+  gap: 1.5rem;
+  justify-content: center;
+  margin-top: 2rem;
+}
+
+.combat-controls {
+  width: 100%;
+  padding: 1rem;
+  background-color: rgba(255, 255, 255, 0.9);
+  border-radius: var(--radius) var(--radius) 0 0;
+  display: flex;
+  justify-content: center;
+  gap: 1rem;
+}
+
+/* Combat participant */
+.combat-participant {
+  position: relative;
+  width: 120px;
+  height: 150px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+.participant-image {
+  width: 100px;
+  height: 100px;
+  border-radius: 50%;
+  background-color: hsl(var(--muted));
+  margin-bottom: 0.5rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 2.5rem;
+  color: hsl(var(--muted-foreground));
+}
+
+.participant-info {
+  text-align: center;
+}
+
+.participant-name {
+  font-weight: 600;
+  margin-bottom: 0.25rem;
+}
+
+.participant-hp {
+  width: 100%;
+  height: 8px;
+  background-color: rgba(255, 255, 255, 0.5);
+  border-radius: 4px;
+  overflow: hidden;
+}
+
+.hp-bar {
+  height: 100%;
+  background-color: #48bb78;
+  transition: width 0.3s ease;
+}
+
+.participant-defeated .participant-image {
+  opacity: 0.5;
+}
+
+.participant-defeated .hp-bar {
+  width: 0 !important;
+}
+
+/* Sound control */
+.sound-control {
+  position: fixed;
+  bottom: 1rem;
+  right: 1rem;
+  z-index: 100;
+}
+
+.sound-button {
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  background-color: hsl(var(--primary));
+  color: hsl(var(--primary-foreground));
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.sound-button:hover {
+  transform: scale(1.1);
+  background-color: hsl(var(--accent));
+}
+
+/* Animation classes */
+.bounce {
+  animation: bounce var(--bounce-duration) infinite alternate;
+}
+
+@keyframes bounce {
+  from {
+    transform: translateY(0);
+  }
+  to {
+    transform: translateY(var(--bounce-height));
+  }
+}
+
+/* Fade-in animation */
+.fade-in {
+  animation: fadeIn 0.5s ease-in;
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+/* Responsive adjustments */
+@media (max-width: 768px) {
+  .resource-panel {
+    width: 100%;
+    justify-content: center;
+    right: 0;
+  }
+  
+  .menu-options {
+    grid-template-columns: 1fr;
+  }
+  
+  .dog-list {
+    flex-direction: column;
+  }
+  
+  .dog-card {
+    min-width: auto;
+    width: 100%;
+  }
+  
+  .combat-enemies,
+  .combat-player-dogs {
+    flex-wrap: wrap;
+  }
+  
+  .combat-controls {
+    flex-direction: column;
+    align-items: center;
+  }
+}
