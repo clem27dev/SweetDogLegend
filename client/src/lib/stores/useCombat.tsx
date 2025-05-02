@@ -1,12 +1,12 @@
 import { create } from "zustand";
+import { useAuth } from "./useAuth";
 import { apiRequest } from "../queryClient";
 import { CombatAction, CombatEncounter } from "../types";
 
-interface CombatActionResult {
-  action: CombatAction;
+interface ActionResult {
   success: boolean;
   damage?: number;
-  message?: string;
+  action?: CombatAction;
 }
 
 interface CombatState {
@@ -14,12 +14,14 @@ interface CombatState {
   isLoading: boolean;
   error: string | null;
   
+  // Combat methods
   fetchActiveCombat: () => Promise<boolean>;
   getCombatById: (id: number) => Promise<CombatEncounter | null>;
-  startCombat: (difficulty: number) => Promise<CombatEncounter>;
-  executeAction: (encounterId: number, action: CombatAction) => Promise<CombatActionResult | null>;
-  executeEnemyAction: (encounterId: number) => Promise<CombatActionResult | null>;
-  distributeCombatRewards: (encounterId: number) => Promise<void>;
+  startCombat: (difficulty: number, dogIds?: number[]) => Promise<CombatEncounter | null>;
+  executeAction: (combatId: number, action: CombatAction) => Promise<ActionResult | null>;
+  executeEnemyAction: (combatId: number) => Promise<ActionResult | null>;
+  distributeCombatRewards: (combatId: number) => Promise<boolean>;
+  clearError: () => void;
 }
 
 export const useCombat = create<CombatState>((set, get) => ({
@@ -28,154 +30,270 @@ export const useCombat = create<CombatState>((set, get) => ({
   error: null,
   
   fetchActiveCombat: async () => {
-    set({ isLoading: true, error: null });
-    
     try {
-      const response = await apiRequest("/api/combat/active", {
-        method: "GET",
-      });
+      set({ isLoading: true, error: null });
       
-      if (response.encounter) {
+      const { token } = useAuth.getState();
+      if (!token) {
         set({ 
-          encounter: response.encounter,
-          isLoading: false 
-        });
-        return true;
-      } else {
-        set({ 
-          encounter: null,
+          error: 'Non authentifié', 
           isLoading: false 
         });
         return false;
       }
+      
+      const response = await apiRequest('/api/combat/active', {
+        method: 'GET',
+        headers: {
+          'x-auth-token': token
+        }
+      });
+      
+      if (response.success) {
+        set({ 
+          encounter: response.encounter || null,
+          isLoading: false
+        });
+        return !!response.encounter;
+      } else {
+        set({ 
+          encounter: null,
+          error: response.message || 'Erreur lors de la récupération du combat',
+          isLoading: false
+        });
+        return false;
+      }
     } catch (error) {
+      console.error('Fetch active combat error:', error);
       set({ 
-        error: error instanceof Error ? error.message : "Failed to fetch active combat", 
-        isLoading: false,
-        encounter: null
+        encounter: null,
+        error: 'Erreur lors de la récupération du combat',
+        isLoading: false
       });
       return false;
     }
   },
   
-  getCombatById: async (id: number) => {
-    set({ isLoading: true, error: null });
-    
+  getCombatById: async (id) => {
     try {
+      set({ isLoading: true, error: null });
+      
+      const { token } = useAuth.getState();
+      if (!token) {
+        set({ 
+          error: 'Non authentifié', 
+          isLoading: false 
+        });
+        return null;
+      }
+      
       const response = await apiRequest(`/api/combat/${id}`, {
-        method: "GET",
-      });
-      
-      set({ 
-        encounter: response.encounter, 
-        isLoading: false 
-      });
-      
-      return response.encounter;
-    } catch (error) {
-      set({ 
-        error: error instanceof Error ? error.message : `Failed to fetch combat ${id}`, 
-        isLoading: false 
-      });
-      return null;
-    }
-  },
-  
-  startCombat: async (difficulty: number) => {
-    set({ isLoading: true, error: null });
-    
-    try {
-      const response = await apiRequest("/api/combat/start", {
-        method: "POST",
+        method: 'GET',
         headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({ difficulty }),
+          'x-auth-token': token
+        }
       });
       
-      set({ 
-        encounter: response.encounter, 
-        isLoading: false 
-      });
-      
-      return response.encounter;
+      if (response.success) {
+        set({ 
+          encounter: response.encounter,
+          isLoading: false
+        });
+        return response.encounter;
+      } else {
+        set({ 
+          error: response.message || 'Erreur lors de la récupération du combat',
+          isLoading: false
+        });
+        return null;
+      }
     } catch (error) {
+      console.error('Get combat error:', error);
       set({ 
-        error: error instanceof Error ? error.message : "Failed to start combat", 
-        isLoading: false 
+        error: 'Erreur lors de la récupération du combat',
+        isLoading: false
       });
-      throw error;
+      return null;
     }
   },
   
-  executeAction: async (encounterId: number, action: CombatAction) => {
-    set({ isLoading: true, error: null });
-    
+  startCombat: async (difficulty, dogIds = []) => {
     try {
-      const response = await apiRequest(`/api/combat/${encounterId}/action`, {
-        method: "POST",
+      set({ isLoading: true, error: null });
+      
+      const { token } = useAuth.getState();
+      if (!token) {
+        set({ 
+          error: 'Non authentifié', 
+          isLoading: false 
+        });
+        return null;
+      }
+      
+      const response = await apiRequest('/api/combat/start', {
+        method: 'POST',
         headers: {
-          "Content-Type": "application/json",
+          'Content-Type': 'application/json',
+          'x-auth-token': token
         },
-        body: JSON.stringify({ action }),
+        body: JSON.stringify({ difficulty, dogIds })
       });
       
-      set({ 
-        encounter: response.encounter, 
-        isLoading: false 
-      });
-      
-      return response.result;
+      if (response.success) {
+        set({ 
+          encounter: response.encounter,
+          isLoading: false
+        });
+        return response.encounter;
+      } else {
+        set({ 
+          error: response.message || 'Erreur lors du démarrage du combat',
+          isLoading: false
+        });
+        return null;
+      }
     } catch (error) {
+      console.error('Start combat error:', error);
       set({ 
-        error: error instanceof Error ? error.message : "Failed to execute action", 
-        isLoading: false 
+        error: 'Erreur lors du démarrage du combat',
+        isLoading: false
       });
       return null;
     }
   },
   
-  executeEnemyAction: async (encounterId: number) => {
-    set({ isLoading: true, error: null });
-    
+  executeAction: async (combatId, action) => {
     try {
-      const response = await apiRequest(`/api/combat/${encounterId}/enemy-action`, {
-        method: "POST",
+      set({ isLoading: true, error: null });
+      
+      const { token } = useAuth.getState();
+      if (!token) {
+        set({ 
+          error: 'Non authentifié', 
+          isLoading: false 
+        });
+        return null;
+      }
+      
+      const response = await apiRequest(`/api/combat/${combatId}/action`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-auth-token': token
+        },
+        body: JSON.stringify({ action })
       });
       
-      set({ 
-        encounter: response.encounter, 
-        isLoading: false 
-      });
-      
-      return response.result;
+      if (response.success) {
+        set({ 
+          encounter: response.encounter,
+          isLoading: false
+        });
+        return response.result;
+      } else {
+        set({ 
+          error: response.message || 'Erreur lors de l\'exécution de l\'action',
+          isLoading: false
+        });
+        return null;
+      }
     } catch (error) {
+      console.error('Execute action error:', error);
       set({ 
-        error: error instanceof Error ? error.message : "Failed to execute enemy action", 
-        isLoading: false 
+        error: 'Erreur lors de l\'exécution de l\'action',
+        isLoading: false
       });
       return null;
     }
   },
   
-  distributeCombatRewards: async (encounterId: number) => {
-    set({ isLoading: true, error: null });
-    
+  executeEnemyAction: async (combatId) => {
     try {
-      const response = await apiRequest(`/api/combat/${encounterId}/rewards`, {
-        method: "POST",
+      set({ isLoading: true, error: null });
+      
+      const { token } = useAuth.getState();
+      if (!token) {
+        set({ 
+          error: 'Non authentifié', 
+          isLoading: false 
+        });
+        return null;
+      }
+      
+      const response = await apiRequest(`/api/combat/${combatId}/enemy-action`, {
+        method: 'POST',
+        headers: {
+          'x-auth-token': token
+        }
       });
       
-      set({ 
-        encounter: null, // Clear the encounter after distributing rewards
-        isLoading: false 
-      });
+      if (response.success) {
+        set({ 
+          encounter: response.encounter,
+          isLoading: false
+        });
+        return response.result;
+      } else {
+        set({ 
+          error: response.message || 'Erreur lors de l\'action ennemie',
+          isLoading: false
+        });
+        return null;
+      }
     } catch (error) {
+      console.error('Execute enemy action error:', error);
       set({ 
-        error: error instanceof Error ? error.message : "Failed to distribute rewards", 
-        isLoading: false 
+        error: 'Erreur lors de l\'action ennemie',
+        isLoading: false
       });
-      throw error;
+      return null;
     }
   },
+  
+  distributeCombatRewards: async (combatId) => {
+    try {
+      set({ isLoading: true, error: null });
+      
+      const { token } = useAuth.getState();
+      if (!token) {
+        set({ 
+          error: 'Non authentifié', 
+          isLoading: false 
+        });
+        return false;
+      }
+      
+      const response = await apiRequest(`/api/combat/${combatId}/rewards`, {
+        method: 'POST',
+        headers: {
+          'x-auth-token': token
+        }
+      });
+      
+      if (response.success) {
+        set({ 
+          encounter: null, // Clear the encounter after rewards are distributed
+          isLoading: false
+        });
+        return true;
+      } else {
+        set({ 
+          error: response.message || 'Erreur lors de la distribution des récompenses',
+          isLoading: false
+        });
+        return false;
+      }
+    } catch (error) {
+      console.error('Distribute rewards error:', error);
+      set({ 
+        error: 'Erreur lors de la distribution des récompenses',
+        isLoading: false
+      });
+      return false;
+    }
+  },
+  
+  clearError: () => {
+    set({ error: null });
+  }
 }));

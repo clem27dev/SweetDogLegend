@@ -1,227 +1,374 @@
-import React, { useState, useEffect } from 'react';
+import React, { useEffect, useState } from 'react';
 import { useCombat } from '../../lib/stores/useCombat';
-import { useGame } from '../../lib/stores/useGame';
 import { useAudio } from '../../lib/stores/useAudio';
+import { useGame } from '../../lib/stores/useGame';
 import { CombatAction, CombatParticipant } from '../../lib/types';
 
 interface CombatArenaProps {
   inMenu?: boolean;
 }
 
-const CombatArena = ({ inMenu = false }: CombatArenaProps) => {
-  const { restart } = useGame();
-  const { playHit, playSuccess } = useAudio();
-  
+// Combat Arena component for turn-based battles
+const CombatArena: React.FC<CombatArenaProps> = ({ inMenu = false }) => {
   const { 
     encounter, 
     fetchActiveCombat, 
-    startCombat, 
-    executeAction, 
-    executeEnemyAction, 
+    startCombat,
+    executeAction,
+    executeEnemyAction,
     distributeCombatRewards 
   } = useCombat();
   
-  const [selectedAction, setSelectedAction] = useState<CombatAction | null>(null);
-  const [isLoading, setIsLoading] = useState(false);
-  const [actionLog, setActionLog] = useState<string[]>([]);
-  const [showRewards, setShowRewards] = useState(false);
+  const { restart, end } = useGame();
+  const { playSuccess, playHit } = useAudio();
   
-  // Load active combat on mount
+  const [selectedAction, setSelectedAction] = useState<CombatAction | null>(null);
+  const [actionExecuting, setActionExecuting] = useState(false);
+  const [combatLog, setCombatLog] = useState<string[]>([]);
+  const [isStarting, setIsStarting] = useState(false);
+  
+  // Check for active combat when component mounts
   useEffect(() => {
-    const loadCombat = async () => {
-      setIsLoading(true);
+    const checkForActiveCombat = async () => {
       const hasActiveCombat = await fetchActiveCombat();
       
-      if (!hasActiveCombat) {
-        await startCombat(1); // Start a level 1 combat by default
+      if (!hasActiveCombat && !inMenu) {
+        // If no active combat and not in menu, start a new combat
+        startNewCombat();
       }
-      
-      setIsLoading(false);
     };
     
-    loadCombat();
-  }, [fetchActiveCombat, startCombat]);
+    checkForActiveCombat();
+  }, [fetchActiveCombat, inMenu]);
   
-  // Handle encounter status changes
-  useEffect(() => {
-    if (encounter && encounter.status !== 'ongoing' && !showRewards) {
-      // Show victory or defeat message
-      setActionLog(prev => [
-        ...prev, 
-        `Combat ${encounter.status === 'victory' ? 'Victory!' : 'Defeat!'}`
-      ]);
+  // Start a new combat encounter
+  const startNewCombat = async () => {
+    try {
+      setIsStarting(true);
+      addToCombatLog('Un groupe de chats maléfiques vous attaque!');
       
-      // Play appropriate sound
-      if (encounter.status === 'victory') {
-        playSuccess();
-      }
+      // Start combat with difficulty 1 (easy)
+      await startCombat(1);
       
-      // Show rewards after a delay
-      setTimeout(() => {
-        setShowRewards(true);
-      }, 2000);
+      addToCombatLog('Préparez-vous au combat!');
+    } catch (error) {
+      console.error('Failed to start combat:', error);
+      restart(); // Go back to menu if combat fails to start
+    } finally {
+      setIsStarting(false);
     }
-  }, [encounter, showRewards, playSuccess]);
+  };
   
-  // Handle player action
-  const handleActionSelect = (action: CombatAction) => {
+  // Add a message to the combat log
+  const addToCombatLog = (message: string) => {
+    setCombatLog(prevLog => [...prevLog, message]);
+  };
+  
+  // Select an action to perform
+  const handleSelectAction = (action: CombatAction) => {
     setSelectedAction(action);
   };
   
-  const handleActionConfirm = async () => {
-    if (!selectedAction || !encounter) return;
+  // Execute the selected action
+  const handleConfirmAction = async () => {
+    if (!encounter || !selectedAction || actionExecuting) return;
     
-    // Execute player action
-    setIsLoading(true);
-    const result = await executeAction(encounter.id, selectedAction);
-    setIsLoading(false);
-    
-    if (result) {
-      // Play hit sound if it was an attack
+    try {
+      setActionExecuting(true);
+      
+      // Get the active participant
+      const activeParticipant = encounter.participants[encounter.activeParticipantIndex];
+      
+      addToCombatLog(`${activeParticipant.name} utilise ${getActionLabel(selectedAction)}!`);
+      
+      // Execute the player's action
+      const result = await executeAction(encounter.id, selectedAction);
+      
+      // Play appropriate sound effect
       if (selectedAction === CombatAction.ATTACK) {
         playHit();
       }
       
-      // Add action to log
-      setActionLog(prev => [
-        ...prev, 
-        `You used ${selectedAction}!`
-      ]);
-      
-      // Execute enemy action if combat is still ongoing
-      if (encounter.status === 'ongoing') {
-        setTimeout(async () => {
-          setIsLoading(true);
-          const enemyResult = await executeEnemyAction(encounter.id);
-          setIsLoading(false);
-          
-          if (enemyResult) {
-            playHit();
-            setActionLog(prev => [
-              ...prev, 
-              `Enemy used ${enemyResult.action}!`
-            ]);
+      // Add result to combat log
+      if (result) {
+        if (result.success) {
+          if (result.damage) {
+            addToCombatLog(`${getActionSuccessMessage(selectedAction)} ${result.damage} dégâts!`);
+          } else {
+            addToCombatLog(getActionSuccessMessage(selectedAction));
           }
-        }, 1000);
+        } else {
+          addToCombatLog(getActionFailMessage(selectedAction));
+        }
       }
+      
+      // Check if combat is over
+      if (encounter.status !== 'ongoing') {
+        handleCombatEnd();
+        return;
+      }
+      
+      // Enemy's turn
+      if (encounter.activeParticipantIndex !== 0) {
+        await handleEnemyTurn();
+      }
+      
+      // Reset selected action
+      setSelectedAction(null);
+    } catch (error) {
+      console.error('Failed to execute action:', error);
+      addToCombatLog('Erreur lors de l\'exécution de l\'action.');
+    } finally {
+      setActionExecuting(false);
     }
-    
-    // Reset selected action
-    setSelectedAction(null);
   };
   
-  // Handle collecting rewards
+  // Handle enemy turn
+  const handleEnemyTurn = async () => {
+    if (!encounter) return;
+    
+    try {
+      // Get the active enemy
+      const activeEnemy = encounter.participants[encounter.activeParticipantIndex];
+      
+      addToCombatLog(`${activeEnemy.name} réfléchit...`);
+      
+      // Wait a bit for dramatic effect
+      await new Promise(resolve => setTimeout(resolve, 1000));
+      
+      // Execute enemy action
+      const result = await executeEnemyAction(encounter.id);
+      
+      // Play sound effect
+      if (result?.action === CombatAction.ATTACK) {
+        playHit();
+      }
+      
+      // Add result to combat log
+      if (result) {
+        addToCombatLog(`${activeEnemy.name} utilise ${getActionLabel(result.action)}!`);
+        
+        if (result.success) {
+          if (result.damage) {
+            addToCombatLog(`${getActionSuccessMessage(result.action)} ${result.damage} dégâts!`);
+          } else {
+            addToCombatLog(getActionSuccessMessage(result.action));
+          }
+        } else {
+          addToCombatLog(getActionFailMessage(result.action));
+        }
+      }
+      
+      // Check if combat is over
+      if (encounter.status !== 'ongoing') {
+        handleCombatEnd();
+      }
+    } catch (error) {
+      console.error('Failed to execute enemy action:', error);
+      addToCombatLog('Erreur lors du tour de l\'ennemi.');
+    }
+  };
+  
+  // Handle the end of combat
+  const handleCombatEnd = () => {
+    if (!encounter) return;
+    
+    if (encounter.status === 'victory') {
+      playSuccess();
+      addToCombatLog('Victoire! Vous avez vaincu les chats maléfiques!');
+    } else if (encounter.status === 'defeat') {
+      addToCombatLog('Défaite! Vos chiens ont été vaincus.');
+    }
+  };
+  
+  // Collect rewards after combat
   const handleCollectRewards = async () => {
     if (!encounter) return;
     
-    setIsLoading(true);
-    await distributeCombatRewards(encounter.id);
-    setIsLoading(false);
-    
-    // Return to main game
-    restart();
+    try {
+      await distributeCombatRewards(encounter.id);
+      restart(); // Go back to the game menu
+    } catch (error) {
+      console.error('Failed to collect rewards:', error);
+    }
   };
   
-  // Render participant health bar
+  // Return to menu
+  const handleReturnToMenu = () => {
+    restart(); // Go back to the game menu
+  };
+  
+  // Render a health bar for a participant
   const renderHealthBar = (participant: CombatParticipant) => {
-    const healthPercentage = Math.max(0, (participant.currentHp / participant.maxHp) * 100);
-    const barColor = participant.isEnemy ? 'red' : 'green';
+    const healthPercent = (participant.currentHp / participant.maxHp) * 100;
+    const barColorClass = participant.isEnemy ? 'health-bar-red' : 'health-bar-green';
     
     return (
       <div className="health-bar-container">
         <div 
-          className={`health-bar health-bar-${barColor}`} 
-          style={{ width: `${healthPercentage}%` }}
-        />
+          className={`health-bar ${barColorClass}`}
+          style={{ width: `${healthPercent}%` }}
+        ></div>
       </div>
     );
   };
   
-  if (isLoading) {
-    return <div className="combat-arena">Loading combat...</div>;
-  }
+  // Get a friendly label for an action
+  const getActionLabel = (action: CombatAction): string => {
+    switch (action) {
+      case CombatAction.ATTACK:
+        return 'Attaque';
+      case CombatAction.DEFEND:
+        return 'Défense';
+      case CombatAction.PASS:
+        return 'Passe';
+      default:
+        return action;
+    }
+  };
   
+  // Get success message for an action
+  const getActionSuccessMessage = (action: CombatAction): string => {
+    switch (action) {
+      case CombatAction.ATTACK:
+        return 'L\'attaque touche et inflige';
+      case CombatAction.DEFEND:
+        return 'La défense est en place, réduit les dégâts reçus!';
+      case CombatAction.PASS:
+        return 'Le tour passe.';
+      default:
+        return 'L\'action réussit.';
+    }
+  };
+  
+  // Get fail message for an action
+  const getActionFailMessage = (action: CombatAction): string => {
+    switch (action) {
+      case CombatAction.ATTACK:
+        return 'L\'attaque manque sa cible!';
+      case CombatAction.DEFEND:
+        return 'La défense n\'a pas pu être mise en place!';
+      case CombatAction.PASS:
+        return 'Tour passé.';
+      default:
+        return 'L\'action échoue.';
+    }
+  };
+  
+  // If no encounter, show loading
   if (!encounter) {
-    return <div className="combat-arena">No active combat</div>;
+    return (
+      <div className="combat-arena">
+        <div className="loading-content">
+          <h2>Préparation du combat...</h2>
+          <div className="loading-paw-prints">
+            <span className="bounce">🐾</span>
+            <span className="bounce">🐾</span>
+            <span className="bounce">🐾</span>
+          </div>
+        </div>
+      </div>
+    );
   }
   
-  // Show rewards screen
-  if (showRewards) {
+  // Show rewards screen if combat is over
+  if (encounter.status === 'victory' || encounter.status === 'defeat') {
     return (
       <div className="combat-arena rewards-screen">
-        <h2>{encounter.status === 'victory' ? 'Victory!' : 'Defeat'}</h2>
+        <h2>{encounter.status === 'victory' ? 'Victoire!' : 'Défaite!'}</h2>
         
         {encounter.status === 'victory' && (
           <div className="rewards-container">
-            <h3>Rewards</h3>
-            <div className="reward-item">🍖 PLK: {encounter.rewards.plk}</div>
-            <div className="reward-item">🧱 LOR: {encounter.rewards.lor}</div>
-            <div className="reward-item">💎 Gems: {encounter.rewards.gems}</div>
-            <div className="reward-item">⭐ Experience: {encounter.rewards.exp}</div>
+            <h3>Récompenses</h3>
+            <div className="reward-item">PLK: +{encounter.rewards.plk}</div>
+            <div className="reward-item">LOR: +{encounter.rewards.lor}</div>
+            <div className="reward-item">Gemmes: +{encounter.rewards.gems}</div>
+            <div className="reward-item">Expérience: +{encounter.rewards.exp}</div>
           </div>
         )}
         
         <button 
           className="collect-rewards-btn"
-          onClick={handleCollectRewards}
+          onClick={encounter.status === 'victory' ? handleCollectRewards : handleReturnToMenu}
         >
-          {encounter.status === 'victory' ? 'Collect Rewards' : 'Return to Game'}
+          {encounter.status === 'victory' ? 'Collecter les récompenses' : 'Retour au menu'}
         </button>
       </div>
     );
   }
   
-  // Get active participant
+  // Get the active participant
   const activeParticipant = encounter.participants[encounter.activeParticipantIndex];
-  const isPlayerTurn = activeParticipant && !activeParticipant.isEnemy;
+  const isPlayerTurn = !activeParticipant.isEnemy;
   
-  // Separate participants into player's team and enemies
+  // Split participants into player team and enemy team
   const playerTeam = encounter.participants.filter(p => !p.isEnemy);
   const enemyTeam = encounter.participants.filter(p => p.isEnemy);
   
   return (
-    <div className={`combat-arena ${inMenu ? 'in-menu' : ''}`}>
+    <div className="combat-arena">
       <div className="combat-header">
-        <h2>Combat - Level {encounter.difficulty}</h2>
-        <div className="combat-turn">Turn {encounter.currentTurn}</div>
+        <h2>Combat contre les chats maléfiques</h2>
+        <div className="combat-turn">
+          Tour {encounter.currentTurn} • 
+          {isPlayerTurn ? 'Votre tour' : 'Tour de l\'ennemi'}
+        </div>
       </div>
       
       <div className="combat-field">
         <div className="player-team">
+          <h3>Vos chiens</h3>
+          
           {playerTeam.map((participant) => (
             <div 
               key={participant.id}
-              className={`participant player ${participant.defeated ? 'defeated' : ''} ${activeParticipant?.id === participant.id ? 'active' : ''}`}
+              className={`
+                participant 
+                player 
+                ${participant.id === activeParticipant.id ? 'active' : ''} 
+                ${participant.defeated ? 'defeated' : ''}
+              `}
             >
               <div className="participant-name">{participant.name}</div>
               <div className="participant-hp">
-                HP: {participant.currentHp}/{participant.maxHp}
+                PV: {participant.currentHp}/{participant.maxHp}
               </div>
+              
               {renderHealthBar(participant)}
+              
               <div className="participant-stats">
-                <div className="stat">STR: {participant.strength}</div>
-                <div className="stat">AGI: {participant.agility}</div>
-                <div className="stat">DEF: {participant.defense}</div>
+                <div>Force: {participant.strength}</div>
+                <div>Agilité: {participant.agility}</div>
+                <div>Défense: {participant.defense}</div>
               </div>
             </div>
           ))}
         </div>
         
         <div className="enemy-team">
+          <h3>Ennemis</h3>
+          
           {enemyTeam.map((participant) => (
             <div 
               key={participant.id}
-              className={`participant enemy ${participant.defeated ? 'defeated' : ''} ${activeParticipant?.id === participant.id ? 'active' : ''}`}
+              className={`
+                participant 
+                enemy 
+                ${participant.id === activeParticipant.id ? 'active' : ''} 
+                ${participant.defeated ? 'defeated' : ''}
+              `}
             >
               <div className="participant-name">{participant.name}</div>
               <div className="participant-hp">
-                HP: {participant.currentHp}/{participant.maxHp}
+                PV: {participant.currentHp}/{participant.maxHp}
               </div>
+              
               {renderHealthBar(participant)}
+              
               <div className="participant-stats">
-                <div className="stat">STR: {participant.strength}</div>
-                <div className="stat">AGI: {participant.agility}</div>
-                <div className="stat">DEF: {participant.defense}</div>
+                <div>Force: {participant.strength}</div>
+                <div>Agilité: {participant.agility}</div>
+                <div>Défense: {participant.defense}</div>
               </div>
             </div>
           ))}
@@ -229,44 +376,46 @@ const CombatArena = ({ inMenu = false }: CombatArenaProps) => {
       </div>
       
       <div className="combat-log">
-        {actionLog.map((log, index) => (
-          <div key={index} className="log-entry">{log}</div>
+        {combatLog.map((message, index) => (
+          <div key={index} className="log-entry">{message}</div>
         ))}
       </div>
       
-      <div className="combat-actions">
-        <button 
-          className={`action-btn attack ${selectedAction === CombatAction.ATTACK ? 'selected' : ''}`}
-          onClick={() => handleActionSelect(CombatAction.ATTACK)}
-          disabled={!isPlayerTurn}
-        >
-          Attack
-        </button>
-        
-        <button 
-          className={`action-btn defend ${selectedAction === CombatAction.DEFEND ? 'selected' : ''}`}
-          onClick={() => handleActionSelect(CombatAction.DEFEND)}
-          disabled={!isPlayerTurn}
-        >
-          Defend
-        </button>
-        
-        <button 
-          className={`action-btn pass ${selectedAction === CombatAction.PASS ? 'selected' : ''}`}
-          onClick={() => handleActionSelect(CombatAction.PASS)}
-          disabled={!isPlayerTurn}
-        >
-          Pass
-        </button>
-        
-        <button 
-          className="confirm-btn"
-          onClick={handleActionConfirm}
-          disabled={!isPlayerTurn || !selectedAction}
-        >
-          Confirm
-        </button>
-      </div>
+      {isPlayerTurn && (
+        <div className="combat-actions">
+          <button 
+            className={`action-btn attack ${selectedAction === CombatAction.ATTACK ? 'selected' : ''}`}
+            onClick={() => handleSelectAction(CombatAction.ATTACK)}
+            disabled={actionExecuting}
+          >
+            Attaque
+          </button>
+          
+          <button 
+            className={`action-btn defend ${selectedAction === CombatAction.DEFEND ? 'selected' : ''}`}
+            onClick={() => handleSelectAction(CombatAction.DEFEND)}
+            disabled={actionExecuting}
+          >
+            Défense
+          </button>
+          
+          <button 
+            className={`action-btn pass ${selectedAction === CombatAction.PASS ? 'selected' : ''}`}
+            onClick={() => handleSelectAction(CombatAction.PASS)}
+            disabled={actionExecuting}
+          >
+            Passer
+          </button>
+          
+          <button 
+            className="confirm-btn"
+            onClick={handleConfirmAction}
+            disabled={!selectedAction || actionExecuting}
+          >
+            {actionExecuting ? 'Exécution...' : 'Confirmer'}
+          </button>
+        </div>
+      )}
     </div>
   );
 };

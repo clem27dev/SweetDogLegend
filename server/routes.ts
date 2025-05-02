@@ -19,58 +19,67 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Setup WebSocket server for real-time chat
   setupWebSocketServer(httpServer);
   
-  // Auth routes
+  // Auth routes - not protected
   app.post("/api/auth/register", authController.register);
   app.post("/api/auth/login", authController.login);
-  app.get("/api/auth/verify", authMiddleware, authController.verifyToken);
+  app.get("/api/auth/verify", authController.verifyToken);
+  app.post('/api/auth/logout', (req, res) => res.status(200).json({ success: true }));
+  
+  // Protected routes - all other routes
+  app.use("/api/resources", authMiddleware);
+  app.use("/api/dogs", authMiddleware);
+  app.use("/api/combat", authMiddleware);
+  app.use("/api/quests", authMiddleware);
+  app.use("/api/groups", authMiddleware);
+  app.use("/api/shop", authMiddleware);
   
   // Resource routes
-  app.get("/api/resources", authMiddleware, authController.getResources);
-  app.put("/api/resources", authMiddleware, authController.updateResources);
-  app.post("/api/resources/passive", authMiddleware, authController.updatePassiveResources);
-  app.post("/api/resources/experience", authMiddleware, authController.addExperience);
+  app.get("/api/resources", authController.getResources);
+  app.put("/api/resources", authController.updateResources);
+  app.post("/api/resources/passive", authController.updatePassiveResources);
+  app.post("/api/resources/experience", authController.addExperience);
   
   // Dog routes
-  app.get("/api/dogs", authMiddleware, dogController.getDogs);
-  app.get("/api/dogs/:id", authMiddleware, dogController.getDogById);
-  app.post("/api/dogs", authMiddleware, dogController.createDog);
-  app.post("/api/dogs/:id/feed", authMiddleware, dogController.feedDog);
-  app.post("/api/dogs/:id/pet", authMiddleware, dogController.petDog);
-  app.post("/api/dogs/:id/train", authMiddleware, dogController.trainDog);
-  app.post("/api/dogs/breed", authMiddleware, dogController.breedDogs);
+  app.get("/api/dogs", dogController.getDogs);
+  app.get("/api/dogs/:id", dogController.getDogById);
+  app.post("/api/dogs", dogController.createDog);
+  app.post("/api/dogs/:id/feed", dogController.feedDog);
+  app.post("/api/dogs/:id/pet", dogController.petDog);
+  app.post("/api/dogs/:id/train", dogController.trainDog);
+  app.post("/api/dogs/breed", dogController.breedDogs);
   
   // Combat routes
-  app.get("/api/combat/active", authMiddleware, combatController.getActiveCombat);
-  app.get("/api/combat/:id", authMiddleware, combatController.getCombatById);
-  app.post("/api/combat/start", authMiddleware, combatController.startCombat);
-  app.post("/api/combat/:id/action", authMiddleware, combatController.executeAction);
-  app.post("/api/combat/:id/enemy-action", authMiddleware, combatController.executeEnemyAction);
-  app.post("/api/combat/:id/rewards", authMiddleware, combatController.distributeCombatRewards);
+  app.get("/api/combat/active", combatController.getActiveCombat);
+  app.get("/api/combat/:id", combatController.getCombatById);
+  app.post("/api/combat/start", combatController.startCombat);
+  app.post("/api/combat/:id/action", combatController.executeAction);
+  app.post("/api/combat/:id/enemy-action", combatController.executeEnemyAction);
+  app.post("/api/combat/:id/rewards", combatController.distributeCombatRewards);
   
   // Quest routes
-  app.get("/api/quests", authMiddleware, questController.getQuests);
-  app.post("/api/quests/progress", authMiddleware, questController.updateQuestProgress);
-  app.post("/api/quests/:id/complete", authMiddleware, questController.completeQuest);
-  app.post("/api/quests/generate", authMiddleware, questController.generateNewQuests);
+  app.get("/api/quests", questController.getQuests);
+  app.post("/api/quests/progress", questController.updateQuestProgress);
+  app.post("/api/quests/:id/complete", questController.completeQuest);
+  app.post("/api/quests/generate", questController.generateNewQuests);
   
   // Group routes
-  app.get("/api/groups", authMiddleware, groupController.getUserGroups);
-  app.get("/api/groups/:id", authMiddleware, groupController.getGroupById);
-  app.post("/api/groups", authMiddleware, groupController.createGroup);
-  app.post("/api/groups/:id/join", authMiddleware, groupController.joinGroup);
-  app.post("/api/groups/:id/leave", authMiddleware, groupController.leaveGroup);
-  app.post("/api/groups/:id/message", authMiddleware, groupController.sendMessage);
-  app.post("/api/groups/:id/invite", authMiddleware, groupController.inviteMember);
-  app.get("/api/groups/invites", authMiddleware, groupController.getInvites);
-  app.post("/api/groups/invites/:groupId/accept", authMiddleware, groupController.acceptInvite);
-  app.post("/api/groups/invites/:groupId/reject", authMiddleware, groupController.rejectInvite);
-  app.put("/api/groups/:id/member/:userId/role", authMiddleware, groupController.changeRole);
-  app.delete("/api/groups/:id/member/:userId", authMiddleware, groupController.kickMember);
-  app.delete("/api/groups/:id", authMiddleware, groupController.disbandGroup);
+  app.get("/api/groups", groupController.getUserGroups);
+  app.get("/api/groups/:id", groupController.getGroupById);
+  app.post("/api/groups", groupController.createGroup);
+  app.post("/api/groups/:id/join", groupController.joinGroup);
+  app.post("/api/groups/:id/leave", groupController.leaveGroup);
+  app.post("/api/groups/:id/message", groupController.sendMessage);
+  app.post("/api/groups/:id/invite", groupController.inviteMember);
+  app.get("/api/groups/invites", groupController.getInvites);
+  app.post("/api/groups/invites/:groupId/accept", groupController.acceptInvite);
+  app.post("/api/groups/invites/:groupId/reject", groupController.rejectInvite);
+  app.put("/api/groups/:id/member/:userId/role", groupController.changeRole);
+  app.delete("/api/groups/:id/member/:userId", groupController.kickMember);
+  app.delete("/api/groups/:id", groupController.disbandGroup);
   
   // Shop routes
-  app.get("/api/shop", authMiddleware, shopController.getShopItems);
-  app.post("/api/shop/purchase", authMiddleware, shopController.purchaseItem);
+  app.get("/api/shop", shopController.getShopItems);
+  app.post("/api/shop/purchase", shopController.purchaseItem);
   
   return httpServer;
 }

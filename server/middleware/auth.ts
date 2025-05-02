@@ -1,44 +1,46 @@
-import { Request, Response, NextFunction } from "express";
-import jwt from "jsonwebtoken";
+import { Request, Response, NextFunction } from 'express';
+import jwt from 'jsonwebtoken';
 
-// JWT secret - in production would be from environment variables
-const JWT_SECRET = process.env.JWT_SECRET || "sweet-dog-secret-key";
+// Secret key for JWT
+const JWT_SECRET = process.env.JWT_SECRET || 'your_jwt_secret_key';
 
-// Add user to request type
+// Extend Express Request interface to include user property
 declare global {
-  namespace Express {
-    interface Request {
-      user?: {
-        id: number;
-        username: string;
-      };
+    namespace Express {
+        interface Request {
+            user?: {
+                id: number;
+                username: string;
+            };
+        }
     }
-  }
 }
 
 // Authentication middleware
 export const authMiddleware = (req: Request, res: Response, next: NextFunction) => {
-  try {
     // Get token from header
-    const authHeader = req.headers.authorization;
-    const token = authHeader && authHeader.split(" ")[1]; // Bearer TOKEN
+    const token = req.header('x-auth-token');
     
+    // Check if no token
     if (!token) {
-      return res.status(401).json({ message: "Access denied. No token provided." });
+        return res.status(401).json({ 
+            success: false, 
+            message: 'Pas de token, autorisation refusée' 
+        });
     }
     
-    // Verify token
-    const decoded = jwt.verify(token, JWT_SECRET) as {
-      id: number;
-      username: string;
-    };
-    
-    // Add user to request
-    req.user = decoded;
-    
-    next();
-  } catch (error) {
-    console.error("Auth middleware error:", error);
-    res.status(401).json({ message: "Invalid token" });
-  }
+    try {
+        // Verify token
+        const decoded = jwt.verify(token, JWT_SECRET) as { id: number; username: string };
+        
+        // Add user from payload to request
+        req.user = decoded;
+        
+        next();
+    } catch (error) {
+        res.status(401).json({ 
+            success: false, 
+            message: 'Token invalide' 
+        });
+    }
 };

@@ -1,353 +1,357 @@
-import { Request, Response } from "express";
-import bcrypt from "bcryptjs";
-import jwt from "jsonwebtoken";
-import { db } from "../db";
-import { users, insertUserSchema, User } from "../../shared/schema";
-import { eq } from "drizzle-orm";
+import { Request, Response } from 'express';
+import { memoryDB } from '../services/memoryDB';
+import jwt from 'jsonwebtoken';
+import bcryptjs from 'bcryptjs';
 
-// JWT secret - in production would be from environment variables
-const JWT_SECRET = process.env.JWT_SECRET || "sweet-dog-secret-key";
+// Secret key for JWT
+const JWT_SECRET = process.env.JWT_SECRET || 'your_jwt_secret_key';
 
-// Generate JWT token
-const generateToken = (user: User) => {
+// Generate JWT token for a user
+const generateToken = (userId: number, username: string) => {
   return jwt.sign(
-    { id: user.id, username: user.username },
+    { id: userId, username },
     JWT_SECRET,
-    { expiresIn: "7d" }
+    { expiresIn: '7d' }
   );
 };
 
-// Register new user
+// Register a new user
 export const register = async (req: Request, res: Response) => {
   try {
-    // Validate input using Zod schema
-    const validatedData = insertUserSchema.parse(req.body);
+    const { username, email, password } = req.body;
     
-    // Check if username or email already exists
-    const existingUser = await db.query.users.findFirst({
-      where: (users, { or, eq }) => or(
-        eq(users.username, validatedData.username),
-        eq(users.email, validatedData.email)
-      )
-    });
+    // Validate input
+    if (!username || !email || !password) {
+      return res.status(400).json({ 
+        success: false, 
+        message: 'Veuillez fournir un nom d\'utilisateur, un email et un mot de passe.' 
+      });
+    }
     
+    // Check if username already exists
+    const existingUser = memoryDB.getUserByUsername(username);
     if (existingUser) {
-      return res.status(400).json({ message: "Username or email already in use" });
+      return res.status(400).json({ 
+        success: false, 
+        message: 'Ce nom d\'utilisateur est déjà utilisé.' 
+      });
     }
     
     // Hash password
-    const salt = await bcrypt.genSalt(10);
-    const hashedPassword = await bcrypt.hash(validatedData.password, salt);
+    const salt = await bcryptjs.genSalt(10);
+    const passwordHash = await bcryptjs.hash(password, salt);
     
     // Create user
-    const [user] = await db.insert(users).values({
-      ...validatedData,
-      password: hashedPassword,
-    }).returning();
+    const user = memoryDB.createUser(username, email, passwordHash);
     
-    if (!user) {
-      return res.status(500).json({ message: "Failed to create user" });
-    }
+    // Generate token
+    const token = generateToken(user.id, user.username);
     
-    // Create starter dogs for the new user
-    const starterDogs = [
-      {
-        userId: user.id,
-        name: "Luc",
-        level: 1,
-        strength: 7,
-        agility: 5,
-        defense: 6,
-        isAdult: false
-      },
-      {
-        userId: user.id,
-        name: "Lynda",
-        level: 1,
-        strength: 5,
-        agility: 7,
-        defense: 6,
-        isAdult: false
-      }
-    ];
+    // Get user's resources
+    const resources = memoryDB.getResources(user.id);
     
-    // Insert starter dogs
-    await db.transaction(async (tx) => {
-      for (const dog of starterDogs) {
-        await tx.insert(dogs).values(dog);
-      }
-    });
-    
-    // Generate JWT token
-    const token = generateToken(user);
-    
-    // Return success with token
     res.status(201).json({
-      message: "User registered successfully",
+      success: true,
       token,
-      userId: user.id,
-      username: user.username
+      user: {
+        id: user.id,
+        username: user.username,
+        level: user.level
+      },
+      resources
     });
   } catch (error) {
-    console.error("Registration error:", error);
-    res.status(400).json({ message: "Registration failed", error });
+    console.error('Register error:', error);
+    res.status(500).json({ 
+      success: false, 
+      message: 'Erreur lors de l\'inscription.' 
+    });
   }
 };
 
-// Login user
+// Login an existing user
 export const login = async (req: Request, res: Response) => {
   try {
     const { username, password } = req.body;
     
-    // Check if user exists
-    const user = await db.query.users.findFirst({
-      where: eq(users.username, username)
-    });
+    // Validate input
+    if (!username || !password) {
+      return res.status(400).json({ 
+        success: false, 
+        message: 'Veuillez fournir un nom d\'utilisateur et un mot de passe.' 
+      });
+    }
     
+    // Find user
+    const user = memoryDB.getUserByUsername(username);
     if (!user) {
-      return res.status(400).json({ message: "Invalid credentials" });
+      return res.status(400).json({ 
+        success: false, 
+        message: 'Nom d\'utilisateur ou mot de passe incorrect.' 
+      });
     }
     
     // Verify password
-    const isMatch = await bcrypt.compare(password, user.password);
-    
+    const isMatch = await bcryptjs.compare(password, user.passwordHash);
     if (!isMatch) {
-      return res.status(400).json({ message: "Invalid credentials" });
+      return res.status(400).json({ 
+        success: false, 
+        message: 'Nom d\'utilisateur ou mot de passe incorrect.' 
+      });
     }
     
-    // Generate JWT token
-    const token = generateToken(user);
+    // Generate token
+    const token = generateToken(user.id, user.username);
     
-    // Return success with token
+    // Get user's resources
+    const resources = memoryDB.getResources(user.id);
+    
     res.json({
-      message: "Login successful",
+      success: true,
       token,
-      userId: user.id,
-      username: user.username
+      user: {
+        id: user.id,
+        username: user.username,
+        level: user.level
+      },
+      resources
     });
   } catch (error) {
-    console.error("Login error:", error);
-    res.status(500).json({ message: "Login failed", error });
+    console.error('Login error:', error);
+    res.status(500).json({ 
+      success: false, 
+      message: 'Erreur lors de la connexion.' 
+    });
   }
 };
 
 // Verify JWT token
 export const verifyToken = async (req: Request, res: Response) => {
   try {
-    const userId = req.user?.id;
-    
-    if (!userId) {
-      return res.status(401).json({ message: "Unauthorized" });
+    // The user should be attached to the request by the auth middleware
+    if (!req.user) {
+      return res.status(401).json({ 
+        success: false, 
+        message: 'Non autorisé, veuillez vous connecter.' 
+      });
     }
     
-    const user = await db.query.users.findFirst({
-      where: eq(users.id, userId)
-    });
-    
+    // Get the full user object
+    const user = memoryDB.getUserById(req.user.id);
     if (!user) {
-      return res.status(401).json({ message: "User not found" });
+      return res.status(401).json({ 
+        success: false, 
+        message: 'Utilisateur non trouvé.' 
+      });
+    }
+    
+    // Get user's resources
+    const resources = memoryDB.getResources(user.id);
+    
+    res.json({
+      success: true,
+      user: {
+        id: user.id,
+        username: user.username,
+        level: user.level
+      },
+      resources
+    });
+  } catch (error) {
+    console.error('Verify token error:', error);
+    res.status(500).json({ 
+      success: false, 
+      message: 'Erreur lors de la vérification du token.' 
+    });
+  }
+};
+
+// Get user's resources
+export const getResources = async (req: Request, res: Response) => {
+  try {
+    if (!req.user) {
+      return res.status(401).json({ 
+        success: false, 
+        message: 'Non autorisé, veuillez vous connecter.' 
+      });
+    }
+    
+    const resources = memoryDB.getResources(req.user.id);
+    if (!resources) {
+      return res.status(404).json({ 
+        success: false, 
+        message: 'Ressources non trouvées.' 
+      });
     }
     
     res.json({
-      userId: user.id,
-      username: user.username
+      success: true,
+      resources
     });
   } catch (error) {
-    console.error("Token verification error:", error);
-    res.status(500).json({ message: "Token verification failed", error });
+    console.error('Get resources error:', error);
+    res.status(500).json({ 
+      success: false, 
+      message: 'Erreur lors de la récupération des ressources.' 
+    });
   }
 };
 
-// Get user resources
-export const getResources = async (req: Request, res: Response) => {
-  try {
-    const userId = req.user?.id;
-    
-    if (!userId) {
-      return res.status(401).json({ message: "Unauthorized" });
-    }
-    
-    const user = await db.query.users.findFirst({
-      where: eq(users.id, userId),
-      columns: {
-        plk: true,
-        lor: true,
-        gems: true,
-        level: true,
-        experience: true,
-        lastResourceUpdate: true
-      }
-    });
-    
-    if (!user) {
-      return res.status(404).json({ message: "User not found" });
-    }
-    
-    res.json(user);
-  } catch (error) {
-    console.error("Get resources error:", error);
-    res.status(500).json({ message: "Failed to get resources", error });
-  }
-};
-
-// Update user resources
+// Update user's resources
 export const updateResources = async (req: Request, res: Response) => {
   try {
-    const userId = req.user?.id;
-    
-    if (!userId) {
-      return res.status(401).json({ message: "Unauthorized" });
+    if (!req.user) {
+      return res.status(401).json({ 
+        success: false, 
+        message: 'Non autorisé, veuillez vous connecter.' 
+      });
     }
     
     const { plk, lor, gems } = req.body;
     
-    const [updatedUser] = await db.update(users)
-      .set({
-        plk: plk !== undefined ? plk : undefined,
-        lor: lor !== undefined ? lor : undefined,
-        gems: gems !== undefined ? gems : undefined,
-        lastResourceUpdate: new Date()
-      })
-      .where(eq(users.id, userId))
-      .returning({
-        plk: users.plk,
-        lor: users.lor,
-        gems: users.gems,
-        lastResourceUpdate: users.lastResourceUpdate
+    // Validate input - allow zeros
+    if (plk === undefined || lor === undefined || gems === undefined) {
+      return res.status(400).json({ 
+        success: false, 
+        message: 'Veuillez fournir des valeurs pour plk, lor et gems.' 
       });
-    
-    if (!updatedUser) {
-      return res.status(404).json({ message: "User not found" });
     }
     
-    res.json(updatedUser);
+    const updatedResources = memoryDB.updateResources(
+      req.user.id,
+      Number(plk),
+      Number(lor),
+      Number(gems)
+    );
+    
+    if (!updatedResources) {
+      return res.status(404).json({ 
+        success: false, 
+        message: 'Ressources non trouvées.' 
+      });
+    }
+    
+    res.json({
+      success: true,
+      resources: updatedResources
+    });
   } catch (error) {
-    console.error("Update resources error:", error);
-    res.status(500).json({ message: "Failed to update resources", error });
+    console.error('Update resources error:', error);
+    res.status(500).json({ 
+      success: false, 
+      message: 'Erreur lors de la mise à jour des ressources.' 
+    });
   }
 };
 
-// Update passive resources
+// Update passive resources (called periodically)
 export const updatePassiveResources = async (req: Request, res: Response) => {
   try {
-    const userId = req.user?.id;
-    
-    if (!userId) {
-      return res.status(401).json({ message: "Unauthorized" });
+    if (!req.user) {
+      return res.status(401).json({ 
+        success: false, 
+        message: 'Non autorisé, veuillez vous connecter.' 
+      });
     }
     
-    // Get user
-    const user = await db.query.users.findFirst({
-      where: eq(users.id, userId),
-      columns: {
-        plk: true,
-        lor: true,
-        gems: true,
-        lastResourceUpdate: true
+    // Get current resources
+    const currentResources = memoryDB.getResources(req.user.id);
+    if (!currentResources) {
+      return res.status(404).json({ 
+        success: false, 
+        message: 'Ressources non trouvées.' 
+      });
+    }
+    
+    // Calculate passive income (simple for now)
+    const passivePlk = 1;
+    const passiveLor = 2;
+    
+    const updatedResources = memoryDB.updateResources(
+      req.user.id,
+      passivePlk,
+      passiveLor,
+      0 // No passive gems
+    );
+    
+    res.json({
+      success: true,
+      resources: updatedResources,
+      added: {
+        plk: passivePlk,
+        lor: passiveLor,
+        gems: 0
       }
     });
-    
-    if (!user) {
-      return res.status(404).json({ message: "User not found" });
-    }
-    
-    // Calculate time since last update
-    const now = new Date();
-    const lastUpdate = new Date(user.lastResourceUpdate);
-    const hoursSinceLastUpdate = (now.getTime() - lastUpdate.getTime()) / (1000 * 60 * 60);
-    
-    // Only update if it's been at least 15 minutes (0.25 hours)
-    if (hoursSinceLastUpdate < 0.25) {
-      return res.json(user);
-    }
-    
-    // Calculate resource gains (20 PLK, 20 Lor, 2 Gems per hour)
-    const hoursElapsed = Math.floor(hoursSinceLastUpdate);
-    const plkGained = 20 * hoursElapsed;
-    const lorGained = 20 * hoursElapsed;
-    const gemsGained = 2 * hoursElapsed;
-    
-    // Update user resources
-    const [updatedUser] = await db.update(users)
-      .set({
-        plk: user.plk + plkGained,
-        lor: user.lor + lorGained,
-        gems: user.gems + gemsGained,
-        lastResourceUpdate: now
-      })
-      .where(eq(users.id, userId))
-      .returning({
-        plk: users.plk,
-        lor: users.lor,
-        gems: users.gems,
-        lastResourceUpdate: users.lastResourceUpdate
-      });
-    
-    res.json(updatedUser);
   } catch (error) {
-    console.error("Update passive resources error:", error);
-    res.status(500).json({ message: "Failed to update passive resources", error });
+    console.error('Update passive resources error:', error);
+    res.status(500).json({ 
+      success: false, 
+      message: 'Erreur lors de la mise à jour des ressources passives.' 
+    });
   }
 };
 
-// Add experience to user
+// Add experience to the user
 export const addExperience = async (req: Request, res: Response) => {
   try {
-    const userId = req.user?.id;
-    
-    if (!userId) {
-      return res.status(401).json({ message: "Unauthorized" });
+    if (!req.user) {
+      return res.status(401).json({ 
+        success: false, 
+        message: 'Non autorisé, veuillez vous connecter.' 
+      });
     }
     
-    const { amount } = req.body;
+    const { experience } = req.body;
     
-    if (!amount || amount <= 0) {
-      return res.status(400).json({ message: "Invalid experience amount" });
+    // Validate input
+    if (!experience || isNaN(Number(experience)) || Number(experience) <= 0) {
+      return res.status(400).json({ 
+        success: false, 
+        message: 'Veuillez fournir une valeur d\'expérience valide.' 
+      });
     }
     
-    // Get user
-    const user = await db.query.users.findFirst({
-      where: eq(users.id, userId),
-      columns: {
-        level: true,
-        experience: true
-      }
-    });
-    
+    // Get current user
+    const user = memoryDB.getUserById(req.user.id);
     if (!user) {
-      return res.status(404).json({ message: "User not found" });
+      return res.status(404).json({ 
+        success: false, 
+        message: 'Utilisateur non trouvé.' 
+      });
     }
     
-    // Calculate new experience and check for level up
-    let newExperience = user.experience + amount;
+    // Simple level up logic
+    const expNeededForNextLevel = user.level * 100;
+    let currentExp = Number(experience);
     let newLevel = user.level;
     
-    // Calculate experience required for current level
-    const calculateExpRequired = (level: number) => 100 + (level - 1) * 50;
-    let expRequired = calculateExpRequired(newLevel);
-    
-    // Check for level ups
-    while (newExperience >= expRequired) {
-      newExperience -= expRequired;
-      newLevel++;
-      expRequired = calculateExpRequired(newLevel);
+    // Level up if enough XP
+    if (currentExp >= expNeededForNextLevel) {
+      newLevel += 1;
+      currentExp -= expNeededForNextLevel;
     }
     
-    // Update user level and experience
-    const [updatedUser] = await db.update(users)
-      .set({
-        level: newLevel,
-        experience: newExperience
-      })
-      .where(eq(users.id, userId))
-      .returning({
-        level: users.level,
-        experience: users.experience
-      });
+    // Update user level
+    const success = memoryDB.updateUserLevel(user.id, newLevel);
     
-    res.json(updatedUser);
+    if (!success) {
+      return res.status(500).json({ 
+        success: false, 
+        message: 'Erreur lors de la mise à jour du niveau.' 
+      });
+    }
+    
+    res.json({
+      success: true,
+      level: newLevel,
+      leveledUp: newLevel > user.level
+    });
   } catch (error) {
-    console.error("Add experience error:", error);
-    res.status(500).json({ message: "Failed to add experience", error });
+    console.error('Add experience error:', error);
+    res.status(500).json({ 
+      success: false, 
+      message: 'Erreur lors de l\'ajout d\'expérience.' 
+    });
   }
 };

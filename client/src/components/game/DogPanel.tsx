@@ -1,172 +1,293 @@
-import React, { useState, useEffect } from 'react';
+import React, { useEffect, useState } from 'react';
 import { useDogs } from '../../lib/stores/useDogs';
+import { useAudio } from '../../lib/stores/useAudio';
+import { useResources } from '../../lib/stores/useResources';
 import { Dog, DogActivity } from '../../lib/types';
 
 interface DogPanelProps {
   inMenu?: boolean;
 }
 
-const DogPanel = ({ inMenu = false }: DogPanelProps) => {
-  const { dogs, fetchDogs, feedDog, petDog, trainDog } = useDogs();
-  const [selectedDog, setSelectedDog] = useState<Dog | null>(null);
-  const [isLoading, setIsLoading] = useState(false);
+const DogPanel: React.FC<DogPanelProps> = ({ inMenu = false }) => {
+  const { 
+    dogs, 
+    fetchDogs, 
+    selectedDogId, 
+    selectDog,
+    feedDog,
+    petDog,
+    trainDog
+  } = useDogs();
   
-  // Fetch dogs on component mount
+  const { resources, updateResources } = useResources();
+  const { playSuccess } = useAudio();
+  
+  const [feedLoading, setFeedLoading] = useState(false);
+  const [petLoading, setPetLoading] = useState(false);
+  const [trainLoading, setTrainLoading] = useState(false);
+  const [breedingLoading, setBreedingLoading] = useState(false);
+  
+  // Fetch dogs when component mounts
   useEffect(() => {
-    const loadDogs = async () => {
-      setIsLoading(true);
-      await fetchDogs();
-      setIsLoading(false);
-    };
-    
-    loadDogs();
+    fetchDogs();
   }, [fetchDogs]);
   
-  // Select first dog by default if none selected
+  // Get the selected dog
+  const selectedDog = dogs.find(dog => dog.id === selectedDogId);
+  
+  // If no dogs loaded yet, select the first one
   useEffect(() => {
-    if (dogs && dogs.length > 0 && !selectedDog) {
-      setSelectedDog(dogs[0]);
+    if (dogs.length > 0 && !selectedDogId) {
+      selectDog(dogs[0].id);
     }
-  }, [dogs, selectedDog]);
+  }, [dogs, selectedDogId, selectDog]);
   
+  // Handle selecting a dog
   const handleSelectDog = (dog: Dog) => {
-    setSelectedDog(dog);
+    selectDog(dog.id);
   };
   
-  const handleFeed = async () => {
-    if (selectedDog) {
-      await feedDog(selectedDog.id);
-    }
-  };
-  
-  const handlePet = async () => {
-    if (selectedDog) {
-      await petDog(selectedDog.id);
-    }
-  };
-  
-  const handleTrain = async () => {
-    if (selectedDog) {
-      await trainDog(selectedDog.id);
-    }
-  };
-  
-  // Function to render stat bars
-  const renderStatBar = (value: number, max: number = 100, color: string = 'blue') => {
-    const percentage = Math.min(100, Math.max(0, (value / max) * 100));
+  // Handle feeding a dog
+  const handleFeedDog = async () => {
+    if (!selectedDog || !resources || feedLoading) return;
     
+    // Check if player has enough PLK
+    if (resources.plk < 2) {
+      console.error('Not enough PLK to feed dog');
+      return;
+    }
+    
+    try {
+      setFeedLoading(true);
+      await feedDog(selectedDog.id);
+      await updateResources(-2, 0, 0); // Reduce PLK by 2
+      playSuccess();
+    } catch (error) {
+      console.error('Error feeding dog:', error);
+    } finally {
+      setFeedLoading(false);
+    }
+  };
+  
+  // Handle petting a dog
+  const handlePetDog = async () => {
+    if (!selectedDog || petLoading) return;
+    
+    try {
+      setPetLoading(true);
+      await petDog(selectedDog.id);
+      playSuccess();
+    } catch (error) {
+      console.error('Error petting dog:', error);
+    } finally {
+      setPetLoading(false);
+    }
+  };
+  
+  // Handle training a dog
+  const handleTrainDog = async () => {
+    if (!selectedDog || !resources || trainLoading) return;
+    
+    // Check if player has enough LOR
+    if (resources.lor < 5) {
+      console.error('Not enough LOR to train dog');
+      return;
+    }
+    
+    try {
+      setTrainLoading(true);
+      await trainDog(selectedDog.id);
+      await updateResources(0, -5, 0); // Reduce LOR by 5
+      playSuccess();
+    } catch (error) {
+      console.error('Error training dog:', error);
+    } finally {
+      setTrainLoading(false);
+    }
+  };
+  
+  // Get status text for a dog
+  const getDogStatusText = (dog: Dog) => {
+    if (!dog.isAdult) {
+      return 'Chiot';
+    }
+    
+    switch (dog.activity) {
+      case DogActivity.FEEDING:
+        return 'En train de manger';
+      case DogActivity.PETTING:
+        return 'En train d\'être caressé';
+      case DogActivity.TRAINING:
+        return 'En entrainement';
+      case DogActivity.BREEDING:
+        return 'En élevage';
+      case DogActivity.COMBATING:
+        return 'En combat';
+      default:
+        return 'Disponible';
+    }
+  };
+  
+  // Get color for a stat bar
+  const getStatBarColor = (stat: string) => {
+    switch (stat) {
+      case 'strength':
+      case 'defense':
+        return 'stat-bar-red';
+      case 'happiness':
+      case 'loyalty':
+        return 'stat-bar-green';
+      case 'agility':
+      case 'energy':
+        return 'stat-bar-blue';
+      default:
+        return '';
+    }
+  };
+  
+  // If no dogs yet, show a message
+  if (dogs.length === 0) {
     return (
-      <div className="stat-bar-container">
-        <div 
-          className={`stat-bar stat-bar-${color}`} 
-          style={{ width: `${percentage}%` }}
-        />
+      <div className="dog-panel">
+        <div className="dog-empty-state">
+          Aucun chien disponible. Visitez la boutique pour adopter votre premier chien!
+        </div>
       </div>
     );
-  };
-  
-  if (isLoading) {
-    return <div className="dog-panel">Loading dogs...</div>;
   }
-  
-  if (!dogs || dogs.length === 0) {
-    return <div className="dog-panel">No dogs available</div>;
-  }
-  
-  if (!selectedDog) {
-    return <div className="dog-panel">Select a dog</div>;
-  }
-  
-  const isDisabled = selectedDog.activity !== DogActivity.IDLE;
   
   return (
-    <div className={`dog-panel ${inMenu ? 'in-menu' : ''}`}>
+    <div className="dog-panel">
       <div className="dog-list">
         {dogs.map((dog) => (
           <div 
             key={dog.id}
-            className={`dog-list-item ${selectedDog.id === dog.id ? 'selected' : ''}`}
+            className={`dog-list-item ${selectedDogId === dog.id ? 'selected' : ''}`}
             onClick={() => handleSelectDog(dog)}
           >
             <div className="dog-list-name">{dog.name}</div>
-            <div className="dog-list-level">Lv. {dog.level}</div>
-            <div className="dog-list-status">
-              {dog.activity !== DogActivity.IDLE ? dog.activity : 'Idle'}
-            </div>
+            <div className="dog-list-level">Niveau {dog.level}</div>
+            <div className="dog-list-status">{getDogStatusText(dog)}</div>
           </div>
         ))}
       </div>
       
-      <div className="dog-details">
-        <h2>{selectedDog.name} ({selectedDog.isAdult ? 'Adult' : 'Puppy'})</h2>
-        <div className="dog-level">
-          Level {selectedDog.level} - Experience: {selectedDog.experience}
+      {selectedDog && (
+        <div className="dog-details">
+          <h2>{selectedDog.name}</h2>
+          <div className="dog-level">
+            Niveau {selectedDog.level} • {selectedDog.isAdult ? 'Adulte' : 'Chiot'} • 
+            Exp: {selectedDog.experience}/100
+          </div>
+          
+          <div className="dog-stats">
+            <div className="stat-row">
+              <div className="stat-label">Force</div>
+              <div className="stat-value">{selectedDog.stats.strength}</div>
+              <div className="stat-bar-container">
+                <div 
+                  className={`stat-bar ${getStatBarColor('strength')}`} 
+                  style={{ width: `${Math.min(100, selectedDog.stats.strength)}%` }}
+                ></div>
+              </div>
+            </div>
+            
+            <div className="stat-row">
+              <div className="stat-label">Agilité</div>
+              <div className="stat-value">{selectedDog.stats.agility}</div>
+              <div className="stat-bar-container">
+                <div 
+                  className={`stat-bar ${getStatBarColor('agility')}`} 
+                  style={{ width: `${Math.min(100, selectedDog.stats.agility)}%` }}
+                ></div>
+              </div>
+            </div>
+            
+            <div className="stat-row">
+              <div className="stat-label">Défense</div>
+              <div className="stat-value">{selectedDog.stats.defense}</div>
+              <div className="stat-bar-container">
+                <div 
+                  className={`stat-bar ${getStatBarColor('defense')}`} 
+                  style={{ width: `${Math.min(100, selectedDog.stats.defense)}%` }}
+                ></div>
+              </div>
+            </div>
+            
+            <div className="stat-row">
+              <div className="stat-label">Bonheur</div>
+              <div className="stat-value">{selectedDog.stats.happiness}</div>
+              <div className="stat-bar-container">
+                <div 
+                  className={`stat-bar ${getStatBarColor('happiness')}`} 
+                  style={{ width: `${Math.min(100, selectedDog.stats.happiness)}%` }}
+                ></div>
+              </div>
+            </div>
+            
+            <div className="stat-row">
+              <div className="stat-label">Loyauté</div>
+              <div className="stat-value">{selectedDog.stats.loyalty}</div>
+              <div className="stat-bar-container">
+                <div 
+                  className={`stat-bar ${getStatBarColor('loyalty')}`} 
+                  style={{ width: `${Math.min(100, selectedDog.stats.loyalty)}%` }}
+                ></div>
+              </div>
+            </div>
+            
+            <div className="stat-row">
+              <div className="stat-label">Énergie</div>
+              <div className="stat-value">{selectedDog.stats.energy}</div>
+              <div className="stat-bar-container">
+                <div 
+                  className={`stat-bar ${getStatBarColor('energy')}`} 
+                  style={{ width: `${Math.min(100, selectedDog.stats.energy)}%` }}
+                ></div>
+              </div>
+            </div>
+          </div>
+          
+          <div className="dog-actions">
+            <button 
+              className="dog-action-btn feed-btn"
+              onClick={handleFeedDog}
+              disabled={
+                feedLoading || 
+                selectedDog.activity !== DogActivity.IDLE || 
+                !resources?.plk || 
+                resources.plk < 2
+              }
+            >
+              Nourrir (2 PLK)
+            </button>
+            
+            <button 
+              className="dog-action-btn pet-btn"
+              onClick={handlePetDog}
+              disabled={
+                petLoading || 
+                selectedDog.activity !== DogActivity.IDLE
+              }
+            >
+              Caresser
+            </button>
+            
+            <button 
+              className="dog-action-btn train-btn"
+              onClick={handleTrainDog}
+              disabled={
+                trainLoading || 
+                selectedDog.activity !== DogActivity.IDLE || 
+                !resources?.lor || 
+                resources.lor < 5
+              }
+            >
+              Entraîner (5 LOR)
+            </button>
+          </div>
         </div>
-        
-        <div className="dog-stats">
-          <div className="stat-row">
-            <div className="stat-label">Strength</div>
-            <div className="stat-value">{selectedDog.stats.strength}</div>
-            {renderStatBar(selectedDog.stats.strength, 100, 'red')}
-          </div>
-          
-          <div className="stat-row">
-            <div className="stat-label">Agility</div>
-            <div className="stat-value">{selectedDog.stats.agility}</div>
-            {renderStatBar(selectedDog.stats.agility, 100, 'green')}
-          </div>
-          
-          <div className="stat-row">
-            <div className="stat-label">Defense</div>
-            <div className="stat-value">{selectedDog.stats.defense}</div>
-            {renderStatBar(selectedDog.stats.defense, 100, 'blue')}
-          </div>
-          
-          <div className="stat-row">
-            <div className="stat-label">Happiness</div>
-            <div className="stat-value">{selectedDog.stats.happiness}</div>
-            {renderStatBar(selectedDog.stats.happiness)}
-          </div>
-          
-          <div className="stat-row">
-            <div className="stat-label">Loyalty</div>
-            <div className="stat-value">{selectedDog.stats.loyalty}</div>
-            {renderStatBar(selectedDog.stats.loyalty)}
-          </div>
-          
-          <div className="stat-row">
-            <div className="stat-label">Energy</div>
-            <div className="stat-value">{selectedDog.stats.energy}</div>
-            {renderStatBar(selectedDog.stats.energy)}
-          </div>
-        </div>
-        
-        <div className="dog-actions">
-          <button 
-            className="dog-action-btn feed-btn" 
-            onClick={handleFeed}
-            disabled={isDisabled}
-          >
-            Feed
-          </button>
-          
-          <button 
-            className="dog-action-btn pet-btn" 
-            onClick={handlePet}
-            disabled={isDisabled}
-          >
-            Pet
-          </button>
-          
-          <button 
-            className="dog-action-btn train-btn" 
-            onClick={handleTrain}
-            disabled={isDisabled}
-          >
-            Train
-          </button>
-        </div>
-      </div>
+      )}
     </div>
   );
 };

@@ -1,4 +1,5 @@
 import { create } from "zustand";
+import { useAuth } from "./useAuth";
 import { apiRequest } from "../queryClient";
 import { Dog } from "../types";
 
@@ -8,15 +9,15 @@ interface DogsState {
   isLoading: boolean;
   error: string | null;
   
+  // Dog methods
   fetchDogs: () => Promise<Dog[]>;
-  getDogById: (id: number) => Promise<Dog | undefined>;
-  createDog: (name: string, isAdult?: boolean, parent1Id?: number, parent2Id?: number) => Promise<Dog>;
-  feedDog: (id: number) => Promise<void>;
-  petDog: (id: number) => Promise<void>;
-  trainDog: (id: number, stat?: string) => Promise<void>;
-  breedDogs: (parentId1: number, parentId2: number, name: string) => Promise<Dog>;
-  
-  selectDog: (id: number) => void;
+  selectDog: (dogId: number) => void;
+  createDog: (name: string) => Promise<Dog | null>;
+  feedDog: (dogId: number) => Promise<Dog | null>;
+  petDog: (dogId: number) => Promise<Dog | null>;
+  trainDog: (dogId: number, stat?: string) => Promise<Dog | null>;
+  breedDogs: (dog1Id: number, dog2Id: number) => Promise<Dog | null>;
+  clearError: () => void;
 }
 
 export const useDogs = create<DogsState>((set, get) => ({
@@ -26,227 +27,289 @@ export const useDogs = create<DogsState>((set, get) => ({
   error: null,
   
   fetchDogs: async () => {
-    set({ isLoading: true, error: null });
-    
     try {
-      const response = await apiRequest("/api/dogs", {
-        method: "GET",
+      set({ isLoading: true, error: null });
+      
+      const { token } = useAuth.getState();
+      if (!token) {
+        set({ 
+          error: 'Non authentifié', 
+          isLoading: false 
+        });
+        return [];
+      }
+      
+      const response = await apiRequest('/api/dogs', {
+        method: 'GET',
+        headers: {
+          'x-auth-token': token
+        }
       });
       
-      set({ 
-        dogs: response.dogs, 
-        isLoading: false 
-      });
-      
-      return response.dogs;
+      if (response.success) {
+        set({ 
+          dogs: response.dogs,
+          isLoading: false
+        });
+        return response.dogs;
+      } else {
+        set({ 
+          error: response.message || 'Erreur lors de la récupération des chiens',
+          isLoading: false
+        });
+        return [];
+      }
     } catch (error) {
+      console.error('Fetch dogs error:', error);
       set({ 
-        error: error instanceof Error ? error.message : "Failed to fetch dogs", 
-        isLoading: false 
+        error: 'Erreur lors de la récupération des chiens',
+        isLoading: false
       });
       return [];
     }
   },
   
-  getDogById: async (id: number) => {
-    const { dogs } = get();
-    
-    // Try to find the dog in the existing state first
-    let dog = dogs.find((d) => d.id === id);
-    
-    if (dog) {
-      return dog;
-    }
-    
-    // If not found, fetch from the API
-    set({ isLoading: true, error: null });
-    
-    try {
-      const response = await apiRequest(`/api/dogs/${id}`, {
-        method: "GET",
-      });
-      
-      // Update the dog in the state
-      const updatedDogs = [...dogs, response.dog];
-      set({ 
-        dogs: updatedDogs, 
-        isLoading: false 
-      });
-      
-      return response.dog;
-    } catch (error) {
-      set({ 
-        error: error instanceof Error ? error.message : `Failed to fetch dog ${id}`, 
-        isLoading: false 
-      });
-      return undefined;
-    }
+  selectDog: (dogId) => {
+    set({ selectedDogId: dogId });
   },
   
-  createDog: async (name: string, isAdult = false, parent1Id, parent2Id) => {
-    set({ isLoading: true, error: null });
-    
+  createDog: async (name) => {
     try {
-      const response = await apiRequest("/api/dogs", {
-        method: "POST",
+      set({ isLoading: true, error: null });
+      
+      const { token } = useAuth.getState();
+      if (!token) {
+        set({ 
+          error: 'Non authentifié', 
+          isLoading: false 
+        });
+        return null;
+      }
+      
+      const response = await apiRequest('/api/dogs', {
+        method: 'POST',
         headers: {
-          "Content-Type": "application/json",
+          'Content-Type': 'application/json',
+          'x-auth-token': token
         },
-        body: JSON.stringify({ 
-          name, 
-          isAdult,
-          parent1Id,
-          parent2Id 
-        }),
+        body: JSON.stringify({ name })
       });
       
-      // Add the new dog to the state
-      const { dogs } = get();
-      const updatedDogs = [...dogs, response.dog];
-      
-      set({ 
-        dogs: updatedDogs, 
-        isLoading: false 
-      });
-      
-      return response.dog;
+      if (response.success) {
+        // Add new dog to the list
+        const newDog = response.dog;
+        set({ 
+          dogs: [...get().dogs, newDog],
+          isLoading: false
+        });
+        return newDog;
+      } else {
+        set({ 
+          error: response.message || 'Erreur lors de la création du chien',
+          isLoading: false
+        });
+        return null;
+      }
     } catch (error) {
+      console.error('Create dog error:', error);
       set({ 
-        error: error instanceof Error ? error.message : "Failed to create dog", 
-        isLoading: false 
+        error: 'Erreur lors de la création du chien',
+        isLoading: false
       });
-      throw error;
+      return null;
     }
   },
   
-  feedDog: async (id: number) => {
-    set({ isLoading: true, error: null });
-    
+  feedDog: async (dogId) => {
     try {
-      const response = await apiRequest(`/api/dogs/${id}/feed`, {
-        method: "POST",
-      });
+      set({ isLoading: true, error: null });
       
-      // Update the dog in the state
-      const { dogs } = get();
-      const updatedDogs = dogs.map((dog) => 
-        dog.id === id ? response.dog : dog
-      );
+      const { token } = useAuth.getState();
+      if (!token) {
+        set({ 
+          error: 'Non authentifié', 
+          isLoading: false 
+        });
+        return null;
+      }
       
-      set({ 
-        dogs: updatedDogs, 
-        isLoading: false 
-      });
-    } catch (error) {
-      set({ 
-        error: error instanceof Error ? error.message : `Failed to feed dog ${id}`, 
-        isLoading: false 
-      });
-      throw error;
-    }
-  },
-  
-  petDog: async (id: number) => {
-    set({ isLoading: true, error: null });
-    
-    try {
-      const response = await apiRequest(`/api/dogs/${id}/pet`, {
-        method: "POST",
-      });
-      
-      // Update the dog in the state
-      const { dogs } = get();
-      const updatedDogs = dogs.map((dog) => 
-        dog.id === id ? response.dog : dog
-      );
-      
-      set({ 
-        dogs: updatedDogs, 
-        isLoading: false 
-      });
-    } catch (error) {
-      set({ 
-        error: error instanceof Error ? error.message : `Failed to pet dog ${id}`, 
-        isLoading: false 
-      });
-      throw error;
-    }
-  },
-  
-  trainDog: async (id: number, stat) => {
-    set({ isLoading: true, error: null });
-    
-    try {
-      const response = await apiRequest(`/api/dogs/${id}/train`, {
-        method: "POST",
+      const response = await apiRequest(`/api/dogs/${dogId}/feed`, {
+        method: 'POST',
         headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({ stat }),
-      });
-      
-      // Update the dog in the state
-      const { dogs } = get();
-      const updatedDogs = dogs.map((dog) => 
-        dog.id === id ? response.dog : dog
-      );
-      
-      set({ 
-        dogs: updatedDogs, 
-        isLoading: false 
-      });
-    } catch (error) {
-      set({ 
-        error: error instanceof Error ? error.message : `Failed to train dog ${id}`, 
-        isLoading: false 
-      });
-      throw error;
-    }
-  },
-  
-  breedDogs: async (parentId1: number, parentId2: number, name: string) => {
-    set({ isLoading: true, error: null });
-    
-    try {
-      const response = await apiRequest("/api/dogs/breed", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({ parentId1, parentId2, name }),
-      });
-      
-      // Add the new dog to the state
-      const { dogs } = get();
-      const updatedDogs = [...dogs, response.dog];
-      
-      // Update the parent dogs with new breeding cooldown
-      const updatedParentDogs = updatedDogs.map((dog) => {
-        if (dog.id === parentId1 || dog.id === parentId2) {
-          return {
-            ...dog,
-            breedingCooldown: response.breedingCooldown,
-          };
+          'x-auth-token': token
         }
-        return dog;
       });
       
-      set({ 
-        dogs: updatedParentDogs, 
-        isLoading: false 
-      });
-      
-      return response.dog;
+      if (response.success) {
+        // Update dog in the list
+        const updatedDog = response.dog;
+        set({ 
+          dogs: get().dogs.map(dog => dog.id === dogId ? updatedDog : dog),
+          isLoading: false
+        });
+        return updatedDog;
+      } else {
+        set({ 
+          error: response.message || 'Erreur lors du nourrissage du chien',
+          isLoading: false
+        });
+        return null;
+      }
     } catch (error) {
+      console.error('Feed dog error:', error);
       set({ 
-        error: error instanceof Error ? error.message : "Failed to breed dogs", 
-        isLoading: false 
+        error: 'Erreur lors du nourrissage du chien',
+        isLoading: false
       });
-      throw error;
+      return null;
     }
   },
   
-  selectDog: (id: number) => {
-    set({ selectedDogId: id });
+  petDog: async (dogId) => {
+    try {
+      set({ isLoading: true, error: null });
+      
+      const { token } = useAuth.getState();
+      if (!token) {
+        set({ 
+          error: 'Non authentifié', 
+          isLoading: false 
+        });
+        return null;
+      }
+      
+      const response = await apiRequest(`/api/dogs/${dogId}/pet`, {
+        method: 'POST',
+        headers: {
+          'x-auth-token': token
+        }
+      });
+      
+      if (response.success) {
+        // Update dog in the list
+        const updatedDog = response.dog;
+        set({ 
+          dogs: get().dogs.map(dog => dog.id === dogId ? updatedDog : dog),
+          isLoading: false
+        });
+        return updatedDog;
+      } else {
+        set({ 
+          error: response.message || 'Erreur lors de la caresse du chien',
+          isLoading: false
+        });
+        return null;
+      }
+    } catch (error) {
+      console.error('Pet dog error:', error);
+      set({ 
+        error: 'Erreur lors de la caresse du chien',
+        isLoading: false
+      });
+      return null;
+    }
   },
+  
+  trainDog: async (dogId, stat) => {
+    try {
+      set({ isLoading: true, error: null });
+      
+      const { token } = useAuth.getState();
+      if (!token) {
+        set({ 
+          error: 'Non authentifié', 
+          isLoading: false 
+        });
+        return null;
+      }
+      
+      const response = await apiRequest(`/api/dogs/${dogId}/train`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-auth-token': token
+        },
+        body: JSON.stringify({ stat })
+      });
+      
+      if (response.success) {
+        // Update dog in the list
+        const updatedDog = response.dog;
+        set({ 
+          dogs: get().dogs.map(dog => dog.id === dogId ? updatedDog : dog),
+          isLoading: false
+        });
+        return updatedDog;
+      } else {
+        set({ 
+          error: response.message || 'Erreur lors de l\'entraînement du chien',
+          isLoading: false
+        });
+        return null;
+      }
+    } catch (error) {
+      console.error('Train dog error:', error);
+      set({ 
+        error: 'Erreur lors de l\'entraînement du chien',
+        isLoading: false
+      });
+      return null;
+    }
+  },
+  
+  breedDogs: async (dog1Id, dog2Id) => {
+    try {
+      set({ isLoading: true, error: null });
+      
+      const { token } = useAuth.getState();
+      if (!token) {
+        set({ 
+          error: 'Non authentifié', 
+          isLoading: false 
+        });
+        return null;
+      }
+      
+      const response = await apiRequest(`/api/dogs/breed`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-auth-token': token
+        },
+        body: JSON.stringify({ dog1Id, dog2Id })
+      });
+      
+      if (response.success) {
+        // Add new puppy to the list and update the parent dogs
+        const { puppy, parents } = response;
+        const updatedDogs = get().dogs.map(dog => {
+          const parent = parents.find(p => p.id === dog.id);
+          return parent ? parent : dog;
+        });
+        
+        set({ 
+          dogs: [...updatedDogs, puppy],
+          isLoading: false
+        });
+        return puppy;
+      } else {
+        set({ 
+          error: response.message || 'Erreur lors de l\'élevage',
+          isLoading: false
+        });
+        return null;
+      }
+    } catch (error) {
+      console.error('Breed dogs error:', error);
+      set({ 
+        error: 'Erreur lors de l\'élevage',
+        isLoading: false
+      });
+      return null;
+    }
+  },
+  
+  clearError: () => {
+    set({ error: null });
+  }
 }));

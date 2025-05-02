@@ -1,50 +1,43 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect } from 'react';
 import { useAuth } from '../../lib/stores/useAuth';
 import { useResources } from '../../lib/stores/useResources';
 
-const ResourcePanel = () => {
+const ResourcePanel: React.FC = () => {
   const { user } = useAuth();
   const { resources, fetchResources } = useResources();
   
-  // Set up automatic resource fetching
+  // Fetch resources when component mounts
   useEffect(() => {
     if (user) {
-      // Initial fetch
       fetchResources();
-      
-      // Set up interval for passive resource generation updates
-      const intervalId = setInterval(() => {
-        fetchResources();
-      }, 60000); // Check for resource updates every minute
-      
-      return () => clearInterval(intervalId);
     }
   }, [user, fetchResources]);
   
+  // If no user or resources, don't render anything
   if (!user || !resources) {
     return null;
   }
   
   return (
     <div className="resource-panel">
-      <div className="resource plk">
-        <span className="resource-icon">🍖</span>
-        <span className="resource-value">{resources.plk}</span>
+      <div className="resource">
+        <div className="resource-icon">🍖</div>
+        <div className="resource-value">{resources.plk}</div>
       </div>
       
-      <div className="resource lor">
-        <span className="resource-icon">🧱</span>
-        <span className="resource-value">{resources.lor}</span>
+      <div className="resource">
+        <div className="resource-icon">🏠</div>
+        <div className="resource-value">{resources.lor}</div>
       </div>
       
-      <div className="resource gems">
-        <span className="resource-icon">💎</span>
-        <span className="resource-value">{resources.gems}</span>
+      <div className="resource">
+        <div className="resource-icon">💎</div>
+        <div className="resource-value">{resources.gems}</div>
       </div>
       
       <div className="player-level">
-        <span className="level-label">Level</span>
-        <span className="level-value">{user.level}</span>
+        <div className="level-label">Niveau:</div>
+        <div className="level-value">{user.level || 1}</div>
       </div>
     </div>
   );

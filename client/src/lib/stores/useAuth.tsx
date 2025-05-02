@@ -1,5 +1,5 @@
 import { create } from "zustand";
-import { apiRequest } from "../queryClient";
+import { getQueryFn, apiRequest } from "../queryClient";
 
 interface User {
   id: number;
@@ -8,115 +8,155 @@ interface User {
 }
 
 interface AuthState {
+  token: string | null;
   user: User | null;
-  isAuthenticated: boolean;
   isLoading: boolean;
   error: string | null;
   
-  login: (username: string, password: string) => Promise<void>;
-  register: (username: string, password: string, email: string) => Promise<void>;
+  // Auth methods
+  register: (username: string, email: string, password: string) => Promise<boolean>;
+  login: (username: string, password: string) => Promise<boolean>;
   logout: () => void;
-  verifyToken: () => Promise<void>;
+  checkAuthState: () => Promise<boolean>;
+  clearError: () => void;
 }
 
 export const useAuth = create<AuthState>((set, get) => ({
+  token: localStorage.getItem('sweetDogToken'),
   user: null,
-  isAuthenticated: false,
-  isLoading: true,
+  isLoading: false,
   error: null,
   
-  login: async (username: string, password: string) => {
-    set({ isLoading: true, error: null });
-    
+  register: async (username, email, password) => {
     try {
-      const response = await apiRequest("/api/auth/login", {
-        method: "POST",
+      set({ isLoading: true, error: null });
+      
+      const response = await apiRequest('/api/auth/register', {
+        method: 'POST',
         headers: {
-          "Content-Type": "application/json",
+          'Content-Type': 'application/json'
         },
-        body: JSON.stringify({ username, password }),
+        body: JSON.stringify({ username, email, password })
       });
       
-      set({ 
-        user: response.user, 
-        isAuthenticated: true, 
-        isLoading: false 
-      });
+      if (response.success) {
+        localStorage.setItem('sweetDogToken', response.token);
+        set({ 
+          token: response.token,
+          user: response.user,
+          isLoading: false
+        });
+        return true;
+      } else {
+        set({ 
+          error: response.message || 'Erreur lors de l\'inscription',
+          isLoading: false
+        });
+        return false;
+      }
     } catch (error) {
+      console.error('Registration error:', error);
       set({ 
-        error: error instanceof Error ? error.message : "Login failed", 
-        isLoading: false 
+        error: 'Erreur lors de l\'inscription',
+        isLoading: false
       });
-      throw error;
+      return false;
     }
   },
   
-  register: async (username: string, password: string, email: string) => {
-    set({ isLoading: true, error: null });
-    
+  login: async (username, password) => {
     try {
-      const response = await apiRequest("/api/auth/register", {
-        method: "POST",
+      set({ isLoading: true, error: null });
+      
+      const response = await apiRequest('/api/auth/login', {
+        method: 'POST',
         headers: {
-          "Content-Type": "application/json",
+          'Content-Type': 'application/json'
         },
-        body: JSON.stringify({ username, password, email }),
+        body: JSON.stringify({ username, password })
       });
       
-      set({ 
-        user: response.user, 
-        isAuthenticated: true, 
-        isLoading: false 
-      });
+      if (response.success) {
+        localStorage.setItem('sweetDogToken', response.token);
+        set({ 
+          token: response.token,
+          user: response.user,
+          isLoading: false
+        });
+        return true;
+      } else {
+        set({ 
+          error: response.message || 'Identifiants invalides',
+          isLoading: false
+        });
+        return false;
+      }
     } catch (error) {
+      console.error('Login error:', error);
       set({ 
-        error: error instanceof Error ? error.message : "Registration failed", 
-        isLoading: false 
+        error: 'Erreur lors de la connexion',
+        isLoading: false
       });
-      throw error;
+      return false;
     }
   },
   
   logout: () => {
-    // Clear user data from state
-    set({ 
-      user: null, 
-      isAuthenticated: false 
-    });
-    
-    // Optional: make a call to the server to invalidate the session
-    fetch("/api/auth/logout", { method: "POST" }).catch(err => {
-      console.error("Logout request failed:", err);
+    localStorage.removeItem('sweetDogToken');
+    set({
+      token: null,
+      user: null
     });
   },
   
-  verifyToken: async () => {
-    set({ isLoading: true });
+  checkAuthState: async () => {
+    const { token } = get();
+    
+    if (!token) {
+      return false;
+    }
     
     try {
-      const response = await apiRequest("/api/auth/verify", {
-        method: "GET",
+      set({ isLoading: true });
+      
+      const response = await apiRequest('/api/auth/verify', {
+        method: 'GET',
+        headers: {
+          'x-auth-token': token
+        }
       });
       
-      if (response.user) {
+      if (response.success) {
         set({ 
-          user: response.user, 
-          isAuthenticated: true, 
-          isLoading: false 
+          user: response.user,
+          isLoading: false
         });
+        return true;
       } else {
+        // Token is invalid, so remove it
+        localStorage.removeItem('sweetDogToken');
         set({ 
-          user: null, 
-          isAuthenticated: false, 
-          isLoading: false 
+          token: null,
+          user: null,
+          isLoading: false
         });
+        return false;
       }
     } catch (error) {
+      console.error('Token verification error:', error);
+      // Token verification failed, so remove it
+      localStorage.removeItem('sweetDogToken');
       set({ 
-        user: null, 
-        isAuthenticated: false, 
-        isLoading: false 
+        token: null,
+        user: null,
+        isLoading: false,
+        error: 'Session expirée. Veuillez vous reconnecter.'
       });
+      return false;
     }
   },
+  
+  clearError: () => {
+    set({ error: null });
+  }
 }));

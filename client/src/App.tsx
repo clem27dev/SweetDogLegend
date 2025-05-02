@@ -73,14 +73,14 @@ const SoundManager = () => {
 
 // Main App component
 function App() {
-  const { isAuthenticated, isLoading, verifyToken } = useAuth();
+  const { user, token, isLoading, checkAuthState } = useAuth();
   const { phase } = useGame();
   const [showCanvas, setShowCanvas] = useState(false);
 
   // Verify user token on component mount
   useEffect(() => {
-    verifyToken();
-  }, [verifyToken]);
+    checkAuthState();
+  }, [checkAuthState]);
 
   // Show the canvas once everything is loaded
   useEffect(() => {
@@ -94,7 +94,7 @@ function App() {
   }
 
   // If not authenticated, show auth form
-  if (!isAuthenticated) {
+  if (!user || !token) {
     return <AuthForm />;
   }
 
